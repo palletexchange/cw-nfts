@@ -132,8 +132,8 @@ pub enum QueryMsg {
     Extension { msg: Extension },
 }
 
-impl From<QueryMsg> for Cw721QueryMsg<Extension> {
-    fn from(msg: QueryMsg) -> Cw721QueryMsg<Extension> {
+impl From<QueryMsg> for Cw721QueryMsg<Extension, QueryMsg> {
+    fn from(msg: QueryMsg) -> Cw721QueryMsg<Extension, QueryMsg> {
         match msg {
             QueryMsg::OwnerOf {
                 token_id,

@@ -5,12 +5,12 @@ pub mod query;
 pub use query::{check_royalties, query_royalties_info};
 
 use cosmwasm_schema::cw_serde;
-use cosmwasm_std::{to_json_binary, Empty};
+use cosmwasm_std::Empty;
 pub use cw721_base::{
     execute::Cw721Execute, msg::InstantiateMsg, query::Cw721Query, Cw721Contract,
 };
 
-use crate::error::ContractError;
+use crate::msg::QueryMsg;
 
 // Version info for migration
 const CONTRACT_NAME: &str = "crates.io:cw2981-royalties";
@@ -49,7 +49,7 @@ pub type Extension = Option<Metadata>;
 
 pub type MintExtension = Option<Extension>;
 
-pub type Cw2981Contract<'a> = Cw721Contract<'a, Extension, Empty, Empty>;
+pub type Cw2981Contract<'a> = Cw721Contract<'a, Extension, Empty, Empty, QueryMsg>;
 pub type ExecuteMsg = cw721_base::msg::ExecuteMsg<Extension, Empty>;
 
 #[cfg(not(feature = "library"))]
@@ -119,6 +119,7 @@ pub mod entry {
     }
 }
 
+#[cfg(not(feature = "library"))]
 #[cfg(test)]
 mod tests {
     use super::*;
