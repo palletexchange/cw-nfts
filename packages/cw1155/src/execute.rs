@@ -682,7 +682,7 @@ pub trait Cw1155Execute<
                     return Err(Cw1155ContractError::InvalidZeroAmount {});
                 }
                 // decrement token approvals from operator if different from balance owner
-                if from != &info.sender {
+                if from != info.sender {
                     let mut approval = config
                         .token_approves
                         .load(deps.storage, (token_id, from, &info.sender))

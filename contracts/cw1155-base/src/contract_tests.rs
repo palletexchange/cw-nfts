@@ -64,7 +64,7 @@ mod tests {
                 assert!(
                     res.is_err(),
                     "mint succeeded but expected error: {}",
-                    expected_error.to_string()
+                    expected_error
                 );
                 res.expect_err(&expected_error.to_string());
             } else {
@@ -102,7 +102,7 @@ mod tests {
                 assert!(
                     res.is_err(),
                     "send succeeded but expected error: {}",
-                    expected_error.to_string()
+                    expected_error
                 );
                 res.expect_err(&expected_error.to_string());
             } else {
@@ -138,7 +138,7 @@ mod tests {
                 assert!(
                     res.is_err(),
                     "send batch succeeded but expected error: {}",
-                    expected_error.to_string()
+                    expected_error
                 );
                 res.expect_err(&expected_error.to_string());
             } else {
@@ -175,7 +175,7 @@ mod tests {
                 assert!(
                     res.is_err(),
                     "approve succeeded but expected error: {}",
-                    expected_error.to_string()
+                    expected_error
                 );
                 res.expect_err(&expected_error.to_string());
             } else {
@@ -210,7 +210,7 @@ mod tests {
                 assert!(
                     res.is_err(),
                     "revoke succeeded but expected error: {}",
-                    expected_error.to_string()
+                    expected_error
                 );
                 res.expect_err(&expected_error.to_string());
             } else {
@@ -243,7 +243,7 @@ mod tests {
                 assert!(
                     res.is_err(),
                     "approve all succeeded but expected error: {}",
-                    expected_error.to_string()
+                    expected_error
                 );
                 res.expect_err(&expected_error.to_string());
             } else {
@@ -274,7 +274,7 @@ mod tests {
                 assert!(
                     res.is_err(),
                     "revoke all succeeded but expected error: {}",
-                    expected_error.to_string()
+                    expected_error
                 );
                 res.expect_err(&expected_error.to_string());
             } else {
@@ -308,7 +308,7 @@ mod tests {
                 assert!(
                     res.is_err(),
                     "burn succeeded but expected error: {}",
-                    expected_error.to_string()
+                    expected_error
                 );
                 res.expect_err(&expected_error.to_string());
             } else {
@@ -337,7 +337,7 @@ mod tests {
                 assert!(
                     res.is_err(),
                     "burn batch succeeded but expected error: {}",
-                    expected_error.to_string()
+                    expected_error
                 );
                 res.expect_err(&expected_error.to_string());
             } else {
@@ -365,7 +365,7 @@ mod tests {
                 assert!(
                     res.is_err(),
                     "update default uri succeeded but expected error: {}",
-                    expected_error.to_string()
+                    expected_error
                 );
                 res.expect_err(&expected_error.to_string());
             } else {
@@ -399,7 +399,7 @@ mod tests {
                 assert!(
                     res.is_err(),
                     "update token metadata succeeded but expected error: {}",
-                    expected_error.to_string()
+                    expected_error
                 );
                 res.expect_err(&expected_error.to_string());
             } else {
@@ -427,7 +427,7 @@ mod tests {
                 assert!(
                     res.is_err(),
                     "update token metadata batch succeeded but expected error: {}",
-                    expected_error.to_string()
+                    expected_error
                 );
                 res.expect_err(&expected_error.to_string());
             } else {
@@ -577,7 +577,7 @@ mod tests {
     fn setup(default_uri: Option<String>) -> TestSuite {
         let mut app = AppBuilder::new().build(|router, _api, storage| {
             // init test accounts with 1_000_000_000 usei (1_000 sei)
-            let funds = vec![coin(1_000_000_000, USEI)];
+            let funds = [coin(1_000_000_000, USEI)];
             router
                 .bank
                 .init_balance(storage, &Addr::unchecked("user1"), funds.to_vec())
