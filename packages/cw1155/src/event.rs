@@ -235,16 +235,16 @@ impl IntoIterator for RevokeAllEvent {
 
 pub struct UpdateMetadataEvent {
     pub token_id: String,
-    pub token_uri: String,
-    pub extension_update: bool,
+    pub token_uri: Option<String>,
+    pub metadata_update: bool,
 }
 
 impl UpdateMetadataEvent {
-    pub fn new(token_id: &str, token_uri: &str, extension_update: bool) -> Self {
+    pub fn new(token_id: &str, token_uri: Option<String>, metadata_update: bool) -> Self {
         Self {
             token_id: token_id.to_string(),
-            token_uri: token_uri.to_string(),
-            extension_update,
+            token_uri,
+            metadata_update,
         }
     }
 }
@@ -255,10 +255,65 @@ impl IntoIterator for UpdateMetadataEvent {
 
     fn into_iter(self) -> Self::IntoIter {
         vec![
-            attr("action", "update_metadata"),
+            attr("action", "update_metadata_single"),
             attr("token_id", self.token_id),
-            attr("token_uri", self.token_uri),
-            attr("extension_update", self.extension_update.to_string()),
+            attr("token_uri", format!("{:?}", self.token_uri)),
+            attr("metadata_update", self.metadata_update.to_string()),
+        ]
+        .into_iter()
+    }
+}
+
+pub struct UpdateMetadataBatchEvent {
+    pub batch: Vec<UpdateMetadataEvent>,
+}
+
+impl UpdateMetadataBatchEvent {
+    pub fn new(batch: Vec<UpdateMetadataEvent>) -> Self {
+        Self { batch }
+    }
+}
+
+impl IntoIterator for UpdateMetadataBatchEvent {
+    type Item = Attribute;
+    type IntoIter = std::vec::IntoIter<Self::Item>;
+
+    fn into_iter(self) -> Self::IntoIter {
+        let mut token_ids = vec![];
+        let mut token_uris = vec![];
+        let mut metadata_updates = vec![];
+        for event in self.batch {
+            token_ids.push(event.token_id);
+            token_uris.push(format!("{:?}", event.token_uri));
+            metadata_updates.push(event.metadata_update.to_string());
+        }
+
+        let mut attrs = vec![attr("action", "update_metadata_batch")];
+        attrs.push(attr("token_ids", token_ids.join(",")));
+        attrs.push(attr("token_uris", token_uris.join(",")));
+        attrs.push(attr("metadata_updates", metadata_updates.join(",")));
+        attrs.into_iter()
+    }
+}
+
+pub struct UpdateDefaultUriEvent {
+    pub default_uri: Option<String>,
+}
+
+impl UpdateDefaultUriEvent {
+    pub fn new(default_uri: Option<String>) -> Self {
+        Self { default_uri }
+    }
+}
+
+impl IntoIterator for UpdateDefaultUriEvent {
+    type Item = Attribute;
+    type IntoIter = std::vec::IntoIter<Self::Item>;
+
+    fn into_iter(self) -> Self::IntoIter {
+        vec![
+            attr("action", "update_default_uri"),
+            attr("default_uri", format!("{:?}", self.default_uri)),
         ]
         .into_iter()
     }

@@ -9,7 +9,7 @@ use serde::Serialize;
 
 use crate::msg::{
     ApprovedForAllResponse, Balance, BalanceResponse, BalancesResponse, Cw1155QueryMsg,
-    IsApprovedForAllResponse, OwnerToken, OwnersOfResponse,
+    DefaultBaseUriResponse, IsApprovedForAllResponse, OwnerToken, OwnersOfResponse,
 };
 use crate::msg::{NumTokensResponse, TokenInfoResponse};
 use crate::state::Cw1155Config;
@@ -140,9 +140,9 @@ pub trait Cw1155Query<
                     .prefix((&token_id, &owner))
                     .range(deps.storage, None, None, Order::Ascending)
                     .filter_map(|approval| {
-                        let (_, approval) = approval.unwrap();
+                        let (operator, approval) = approval.unwrap();
                         if include_expired.unwrap_or(false) || !approval.is_expired(&env) {
-                            Some(approval)
+                            Some(approval.to_response(&operator))
                         } else {
                             None
                         }
@@ -188,8 +188,24 @@ pub trait Cw1155Query<
                     TQueryExtensionMsg,
                 >::default();
                 let token_info = config.tokens.load(deps.storage, &token_id)?;
+                let token_uri = token_info
+                    .token_uri
+                    .or_else(|| {
+                        config
+                            .default_base_uri
+                            .load(deps.storage)
+                            .map(|base_uri| {
+                                if let Some(base_uri) = base_uri {
+                                    format!("{}{}", base_uri, token_id)
+                                } else {
+                                    "".to_string()
+                                }
+                            })
+                            .ok()
+                    })
+                    .unwrap_or_default();
                 to_json_binary(&TokenInfoResponse::<TMetadataExtension> {
-                    token_uri: token_info.token_uri,
+                    token_uri,
                     extension: token_info.extension,
                 })
             }
@@ -226,10 +242,13 @@ pub trait Cw1155Query<
                 to_json_binary(&NumTokensResponse { count })
             }
             Cw1155QueryMsg::AllTokens { start_after, limit } => {
-                to_json_binary(&self.query_all_tokens_cw1155(deps, start_after, limit)?)
+                to_json_binary(&self.query_all_tokens(deps, start_after, limit)?)
             }
             Cw1155QueryMsg::Ownership {} => {
                 to_json_binary(&cw_ownable::get_ownership(deps.storage)?)
+            }
+            Cw1155QueryMsg::DefaultBaseUri {} => {
+                to_json_binary(&self.query_default_base_uri(deps)?)
             }
 
             Cw1155QueryMsg::Extension { msg: ext_msg, .. } => {
@@ -294,7 +313,7 @@ pub trait Cw1155Query<
         Ok(TokensResponse { tokens })
     }
 
-    fn query_all_tokens_cw1155(
+    fn query_all_tokens(
         &self,
         deps: Deps,
         start_after: Option<String>,
@@ -352,6 +371,20 @@ pub trait Cw1155Query<
             .collect();
 
         Ok(BalancesResponse { balances })
+    }
+
+    fn query_default_base_uri(&self, deps: Deps) -> StdResult<DefaultBaseUriResponse> {
+        let config = Cw1155Config::<
+            TMetadataExtension,
+            TCustomResponseMessage,
+            TMetadataExtensionMsg,
+            TQueryExtensionMsg,
+        >::default();
+        let uri = config
+            .default_base_uri
+            .load(deps.storage)?
+            .unwrap_or_default();
+        Ok(DefaultBaseUriResponse { uri })
     }
 
     /// Custom msg query. Default implementation returns an empty binary.

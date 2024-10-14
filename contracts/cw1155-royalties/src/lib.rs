@@ -3,7 +3,7 @@ use cw1155::msg::{Cw1155ExecuteMsg, Cw1155QueryMsg};
 use cw1155::state::Cw1155Config;
 use cw1155_base::Cw1155Contract;
 use cw2981_royalties::msg::QueryMsg as Cw2981QueryMsg;
-use cw2981_royalties::DefaultOptionMetadataExtensionWithRoyalty;
+use cw2981_royalties::MetadataWithRoyalty;
 
 mod query;
 pub use query::query_royalties_info;
@@ -16,13 +16,11 @@ const CONTRACT_NAME: &str = "crates.io:cw1155-royalties";
 const CONTRACT_VERSION: &str = env!("CARGO_PKG_VERSION");
 
 pub type Cw1155RoyaltiesContract<'a> =
-    Cw1155Contract<'a, DefaultOptionMetadataExtensionWithRoyalty, Empty, Empty, Cw2981QueryMsg>;
-pub type Cw1155RoyaltiesExecuteMsg =
-    Cw1155ExecuteMsg<DefaultOptionMetadataExtensionWithRoyalty, Empty>;
-pub type Cw1155RoyaltiesQueryMsg =
-    Cw1155QueryMsg<DefaultOptionMetadataExtensionWithRoyalty, Cw2981QueryMsg>;
+    Cw1155Contract<'a, MetadataWithRoyalty, Empty, Empty, Cw2981QueryMsg>;
+pub type Cw1155RoyaltiesExecuteMsg = Cw1155ExecuteMsg<MetadataWithRoyalty, Empty>;
+pub type Cw1155RoyaltiesQueryMsg = Cw1155QueryMsg<MetadataWithRoyalty, Cw2981QueryMsg>;
 pub type Cw1155RoyaltiesConfig<'a> =
-    Cw1155Config<'a, DefaultOptionMetadataExtensionWithRoyalty, Empty, Empty, Cw2981QueryMsg>;
+    Cw1155Config<'a, MetadataWithRoyalty, Empty, Empty, Cw2981QueryMsg>;
 
 #[cfg(not(feature = "library"))]
 pub mod entry {
@@ -131,6 +129,7 @@ mod tests {
             name: "SpaceShips".to_string(),
             symbol: "SPACE".to_string(),
             minter: None,
+            default_uri: None,
         };
         entry::instantiate(deps.as_mut(), mock_env(), info.clone(), init_msg).unwrap();
 
@@ -167,6 +166,7 @@ mod tests {
             name: "SpaceShips".to_string(),
             symbol: "SPACE".to_string(),
             minter: None,
+            default_uri: None,
         };
         entry::instantiate(deps.as_mut(), mock_env(), info.clone(), init_msg).unwrap();
 
@@ -200,6 +200,7 @@ mod tests {
             name: "SpaceShips".to_string(),
             symbol: "SPACE".to_string(),
             minter: None,
+            default_uri: None,
         };
         entry::instantiate(deps.as_mut(), mock_env(), info.clone(), init_msg).unwrap();
 
@@ -244,6 +245,7 @@ mod tests {
             name: "SpaceShips".to_string(),
             symbol: "SPACE".to_string(),
             minter: None,
+            default_uri: None,
         };
         entry::instantiate(deps.as_mut(), mock_env(), info.clone(), init_msg).unwrap();
 

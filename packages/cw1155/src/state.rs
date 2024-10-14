@@ -1,3 +1,4 @@
+use crate::error::Cw1155ContractError;
 use crate::msg::{Balance, CollectionInfo, TokenApproval};
 use cosmwasm_schema::cw_serde;
 use cosmwasm_std::{Addr, CustomMsg, Env, StdError, StdResult, Storage, Uint128};
@@ -24,6 +25,7 @@ pub struct Cw1155Config<
 {
     pub collection_info: Item<'a, CollectionInfo>,
     pub supply: Item<'a, Uint128>, // total supply of all tokens
+    pub default_base_uri: Item<'a, Option<String>>, // default base token uri for tokens with no token_uri
     // key: token id
     pub token_count: Map<'a, &'a str, Uint128>, // total supply of a specific token
     // key: (owner, token id)
@@ -103,6 +105,7 @@ where
             tokens: Map::new(tokens_key),
             token_count: Map::new(token_count_key),
             supply: Item::new(supply_key),
+            default_base_uri: Item::new("default_uri"),
             balances: IndexedMap::new(balances_key, balances_indexes),
             approves: Map::new(approves_key),
             token_approves: Map::new(token_approves_key),
@@ -167,6 +170,34 @@ where
             Err(_) => false,
         }
     }
+
+    pub fn update_token_metadata(
+        &self,
+        storage: &mut dyn Storage,
+        token_id: &str,
+        mut token_info: TokenInfo<TMetadataExtension>,
+        token_uri: Option<String>,
+        metadata: Option<TMetadataExtension>,
+    ) -> Result<(String, TokenInfo<TMetadataExtension>), Cw1155ContractError> {
+        if metadata.is_none()
+            && token_uri.clone().unwrap_or_default() == token_info.token_uri.unwrap_or_default()
+        {
+            return Err(Cw1155ContractError::NoUpdatesRequested {
+                token_id: token_id.to_string(),
+            });
+        }
+
+        // update metadata
+        token_info.extension = metadata;
+
+        // update token uri
+        token_info.token_uri = token_uri;
+
+        // store token
+        self.tokens.save(storage, token_id, &token_info)?;
+
+        Ok((token_id.to_string(), token_info))
+    }
 }
 
 #[cw_serde]
@@ -174,7 +205,7 @@ pub struct TokenInfo<T> {
     /// Metadata JSON Schema
     pub token_uri: Option<String>,
     /// You can add any custom metadata here when you extend cw1155-base
-    pub extension: T,
+    pub extension: Option<T>,
 }
 
 pub struct BalanceIndexes<'a> {
