@@ -57,8 +57,9 @@ pub mod entry {
 
     use super::*;
 
+    use crate::error::ContractError;
     use cosmwasm_std::entry_point;
-    use cosmwasm_std::{Binary, Deps, DepsMut, Env, MessageInfo, Response};
+    use cosmwasm_std::{to_json_binary, Binary, Deps, DepsMut, Env, MessageInfo, Response};
     use cw721::msg::Cw721InstantiateMsg;
     use cw721::traits::{Cw721Execute, Cw721Query};
     use state::Cw2981Contract;
