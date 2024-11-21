@@ -6,18 +6,16 @@ pub mod state;
 pub use crate::state::Cw1155Contract;
 use cosmwasm_std::Empty;
 use cw1155::msg::{Cw1155ExecuteMsg, Cw1155QueryMsg};
-use cw1155::state::{Cw1155Config, DefaultOptionMetadataExtension};
+use cw1155::state::Cw1155Config;
 
 // Version info for migration
 pub const CONTRACT_NAME: &str = "crates.io:cw1155-base";
 pub const CONTRACT_VERSION: &str = env!("CARGO_PKG_VERSION");
 
-pub type Cw1155BaseContract<'a> =
-    Cw1155Contract<'a, DefaultOptionMetadataExtension, Empty, Empty, Empty>;
-pub type Cw1155BaseExecuteMsg = Cw1155ExecuteMsg<DefaultOptionMetadataExtension, Empty>;
-pub type Cw1155BaseQueryMsg = Cw1155QueryMsg<DefaultOptionMetadataExtension, Empty>;
-pub type Cw1155BaseConfig<'a> =
-    Cw1155Config<'a, DefaultOptionMetadataExtension, Empty, Empty, Empty>;
+pub type Cw1155BaseContract<'a> = Cw1155Contract<'a, String, Empty, Empty, Empty>;
+pub type Cw1155BaseExecuteMsg = Cw1155ExecuteMsg<String, Empty>;
+pub type Cw1155BaseQueryMsg = Cw1155QueryMsg<String, Empty>;
+pub type Cw1155BaseConfig<'a> = Cw1155Config<'a, String, Empty, Empty, Empty>;
 
 pub mod entry {
     use super::*;
@@ -29,7 +27,6 @@ pub mod entry {
     use cw1155::execute::Cw1155Execute;
     use cw1155::msg::{Cw1155ExecuteMsg, Cw1155InstantiateMsg, Cw1155QueryMsg};
     use cw1155::query::Cw1155Query;
-    use cw1155::state::DefaultOptionMetadataExtension;
 
     // This makes a conscious choice on the various generics used by the contract
     #[cfg_attr(not(feature = "library"), entry_point)]
@@ -48,18 +45,14 @@ pub mod entry {
         deps: DepsMut,
         env: Env,
         info: MessageInfo,
-        msg: Cw1155ExecuteMsg<DefaultOptionMetadataExtension, Empty>,
+        msg: Cw1155ExecuteMsg<String, Empty>,
     ) -> Result<Response, Cw1155ContractError> {
         let tract = Cw1155BaseContract::default();
         tract.execute(deps, env, info, msg)
     }
 
     #[cfg_attr(not(feature = "library"), entry_point)]
-    pub fn query(
-        deps: Deps,
-        env: Env,
-        msg: Cw1155QueryMsg<DefaultOptionMetadataExtension, Empty>,
-    ) -> StdResult<Binary> {
+    pub fn query(deps: Deps, env: Env, msg: Cw1155QueryMsg<String, Empty>) -> StdResult<Binary> {
         let tract = Cw1155BaseContract::default();
         tract.query(deps, env, msg)
     }
