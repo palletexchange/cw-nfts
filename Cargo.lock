@@ -300,7 +300,7 @@ dependencies = [
 [[package]]
 name = "cw-paginate-storage"
 version = "2.4.2"
-source = "git+https://github.com/DA0-DA0/dao-contracts.git#bb8224ef1285266f4c8f11448e361f66c6a7e879"
+source = "git+https://github.com/DA0-DA0/dao-contracts.git?rev=3ab7017#3ab701747d6d5571cfee7f5a78d8fe39ffa3a8f7"
 dependencies = [
  "cosmwasm-std",
  "cw-storage-plus 1.2.0",
