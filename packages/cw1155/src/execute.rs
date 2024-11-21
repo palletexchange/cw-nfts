@@ -1,6 +1,6 @@
 use cosmwasm_std::{
-    Addr, Attribute, BankMsg, Binary, CustomMsg, DepsMut, Empty, Env, MessageInfo, Order, Response,
-    StdResult, Storage, SubMsg, Uint128,
+    Addr, Attribute, BankMsg, Binary, CustomMsg, DepsMut, Empty, Env, MessageInfo, Response,
+    StdError, StdResult, Storage, SubMsg, Uint128,
 };
 use cw2::set_contract_version;
 use cw721::execute::migrate_version;
@@ -12,9 +12,9 @@ use std::vec::IntoIter;
 
 use crate::event::{
     ApproveAllEvent, ApproveEvent, BurnEvent, MintEvent, RevokeAllEvent, RevokeEvent,
-    TransferEvent, UpdateMetadataEvent,
+    TransferEvent, UpdateDefaultUriEvent, UpdateMetadataBatchEvent, UpdateMetadataEvent,
 };
-use crate::msg::{Balance, CollectionInfo, Cw1155MintMsg, TokenAmount, TokenApproval};
+use crate::msg::{Balance, CollectionInfo, Cw1155MintMsg, TokenAmount, TokenApproval, TokenUpdate};
 use crate::receiver::Cw1155BatchReceiveMsg;
 use crate::state::TokenInfo;
 use crate::{
@@ -73,6 +73,11 @@ pub trait Cw1155Execute<
         // store total supply
         config.supply.save(deps.storage, &Uint128::zero())?;
 
+        // store default base uri
+        config
+            .default_base_uri
+            .save(deps.storage, &msg.default_uri)?;
+
         Ok(Response::default().add_attribute("minter", minter))
     }
 
@@ -97,9 +102,9 @@ pub trait Cw1155Execute<
             }
             Cw1155ExecuteMsg::BurnBatch { from, batch } => self.burn_batch(env, from, batch),
             Cw1155ExecuteMsg::ApproveAll { operator, expires } => {
-                self.approve_all_cw1155(env, operator, expires)
+                self.approve_all(env, operator, expires)
             }
-            Cw1155ExecuteMsg::RevokeAll { operator } => self.revoke_all_cw1155(env, operator),
+            Cw1155ExecuteMsg::RevokeAll { operator } => self.revoke_all(env, operator),
 
             // cw721
             Cw1155ExecuteMsg::Send {
@@ -109,7 +114,7 @@ pub trait Cw1155Execute<
                 amount,
                 msg,
             } => self.send(env, from, to, token_id, amount, msg),
-            Cw1155ExecuteMsg::Mint { recipient, msg } => self.mint_cw1155(env, recipient, msg),
+            Cw1155ExecuteMsg::Mint { recipient, msg } => self.mint(env, recipient, msg),
             Cw1155ExecuteMsg::Burn {
                 from,
                 token_id,
@@ -127,6 +132,11 @@ pub trait Cw1155Execute<
                 amount,
             } => self.revoke_token(env, spender, token_id, amount),
             Cw1155ExecuteMsg::UpdateOwnership(action) => Self::update_ownership(env, action),
+            Cw1155ExecuteMsg::UpdateMetadata(update) => self.update_metadata(env, update),
+            Cw1155ExecuteMsg::UpdateMetadataBatch { updates } => {
+                self.update_metadata_batch(env, updates)
+            }
+            Cw1155ExecuteMsg::UpdateDefaultUri { uri } => self.update_default_base_uri(env, uri),
 
             Cw1155ExecuteMsg::Extension { .. } => unimplemented!(),
         }
@@ -146,7 +156,7 @@ pub trait Cw1155Execute<
         Ok(response)
     }
 
-    fn mint_cw1155(
+    fn mint(
         &self,
         env: ExecuteEnv,
         recipient: String,
@@ -442,7 +452,7 @@ pub trait Cw1155Execute<
         env: ExecuteEnv,
         operator: String,
         token_id: String,
-        amount: Option<Uint128>,
+        approval_amount: Uint128,
         expiration: Option<Expiration>,
     ) -> Result<Response<TCustomResponseMessage>, Cw1155ContractError> {
         let ExecuteEnv { deps, info, env } = env;
@@ -459,11 +469,17 @@ pub trait Cw1155Execute<
             return Err(Cw1155ContractError::Expired {});
         }
 
-        // get sender's token balance to get valid approval amount
-        let balance = config
-            .balances
-            .load(deps.storage, (info.sender.clone(), token_id.to_string()))?;
-        let approval_amount = amount.unwrap_or(Uint128::MAX).min(balance.amount);
+        // validate approval amount
+        if approval_amount.is_zero() {
+            return Err(Cw1155ContractError::InvalidZeroAmount {});
+        }
+
+        // verify operator != owner
+        if info.sender == operator {
+            return Err(Cw1155ContractError::Unauthorized {
+                reason: "Operator cannot be the owner".to_string(),
+            });
+        }
 
         // store the approval
         let operator = deps.api.addr_validate(&operator)?;
@@ -484,7 +500,7 @@ pub trait Cw1155Execute<
         Ok(rsp)
     }
 
-    fn approve_all_cw1155(
+    fn approve_all(
         &self,
         env: ExecuteEnv,
         operator: String,
@@ -497,6 +513,12 @@ pub trait Cw1155Execute<
             TMetadataExtensionMsg,
             TQueryExtensionMsg,
         >::default();
+
+        if info.sender == operator {
+            return Err(Cw1155ContractError::Unauthorized {
+                reason: "Operator cannot be the owner".to_string(),
+            });
+        }
 
         // reject expired data as invalid
         let expires = expires.unwrap_or_default();
@@ -565,7 +587,7 @@ pub trait Cw1155Execute<
         Ok(rsp)
     }
 
-    fn revoke_all_cw1155(
+    fn revoke_all(
         &self,
         env: ExecuteEnv,
         operator: String,
@@ -659,26 +681,25 @@ pub trait Cw1155Execute<
                 if amount.is_zero() {
                     return Err(Cw1155ContractError::InvalidZeroAmount {});
                 }
-                // remove token approvals
-                for (operator, approval) in config
-                    .token_approves
-                    .prefix((token_id, from))
-                    .range(deps.storage, None, None, Order::Ascending)
-                    .collect::<StdResult<Vec<_>>>()?
-                {
-                    if approval.is_expired(env) || approval.amount <= *amount {
+                // decrement token approvals from operator if different from balance owner
+                if from != info.sender {
+                    let mut approval = config
+                        .token_approves
+                        .load(deps.storage, (token_id, from, &info.sender))
+                        .unwrap_or_default();
+                    if approval.is_expired(env) {
+                        return Err(Cw1155ContractError::Expired {});
+                    }
+                    if approval.amount <= *amount {
                         config
                             .token_approves
-                            .remove(deps.storage, (token_id, from, &operator));
+                            .remove(deps.storage, (token_id, from, &info.sender));
                     } else {
-                        config.token_approves.update(
+                        approval.amount = approval.amount.checked_sub(*amount)?;
+                        config.token_approves.save(
                             deps.storage,
-                            (token_id, from, &operator),
-                            |prev| -> StdResult<_> {
-                                let mut new_approval = prev.unwrap();
-                                new_approval.amount = new_approval.amount.checked_sub(*amount)?;
-                                Ok(new_approval)
-                            },
+                            (token_id, from, &info.sender),
+                            &approval,
                         )?;
                     }
                 }
@@ -690,6 +711,12 @@ pub trait Cw1155Execute<
             }
 
             if let Some(to) = &to {
+                // verify sender != recipient
+                if from == to {
+                    return Err(Cw1155ContractError::Unauthorized {
+                        reason: "Cannot send to self".to_string(),
+                    });
+                }
                 // transfer
                 TransferEvent::new(info, Some(from.clone()), to, tokens).into_iter()
             } else {
@@ -735,11 +762,17 @@ pub trait Cw1155Execute<
             amount,
         };
 
+        let owner_balance = config
+            .balances
+            .load(storage, (owner.clone(), token_id.to_string()))
+            .unwrap_or_else(|_| Balance {
+                owner: owner.clone(),
+                amount: Uint128::zero(),
+                token_id: token_id.to_string(),
+            });
+
         // owner or all operator can execute
         if owner == operator || config.verify_all_approval(storage, env, owner, operator) {
-            let owner_balance = config
-                .balances
-                .load(storage, (owner.clone(), token_id.to_string()))?;
             if owner_balance.amount < amount {
                 return Err(Cw1155ContractError::NotEnoughTokens {
                     available: owner_balance.amount,
@@ -753,16 +786,17 @@ pub trait Cw1155Execute<
         if let Some(token_approval) =
             self.get_active_token_approval(storage, env, owner, operator, token_id)
         {
-            if token_approval.amount < amount {
+            let available_amount = token_approval.amount.min(owner_balance.amount);
+            if available_amount < amount {
                 return Err(Cw1155ContractError::NotEnoughTokens {
-                    available: token_approval.amount,
+                    available: available_amount,
                     requested: amount,
                 });
             }
             return Ok(balance_update);
         }
 
-        Err(Cw1155ContractError::Unauthorized {})
+        Err(StdError::not_found("approval").into())
     }
 
     /// returns valid token amounts if the sender can execute or is approved to execute on all provided tokens
@@ -821,21 +855,57 @@ pub trait Cw1155Execute<
         Ok(Response::new().add_attributes(ownership.into_attributes()))
     }
 
-    /// Allows creator to update onchain metadata and token uri. This is not available on the base, but the implementation
-    /// is available here for contracts that want to use it.
+    /// Allows creator to update onchain metadata and token uri.
     /// From `update_uri` on ERC-1155.
     fn update_metadata(
         &self,
-        deps: DepsMut,
-        info: MessageInfo,
-        token_id: String,
-        extension: Option<TMetadataExtension>,
-        token_uri: Option<String>,
+        env: ExecuteEnv,
+        update: TokenUpdate<TMetadataExtension>,
     ) -> Result<Response<TCustomResponseMessage>, Cw1155ContractError> {
+        let ExecuteEnv { deps, info, .. } = env;
         cw_ownable::assert_owner(deps.storage, &info.sender)?;
 
-        if extension.is_none() && token_uri.is_none() {
-            return Err(Cw1155ContractError::NoUpdatesRequested {});
+        let TokenUpdate {
+            token_id,
+            token_uri,
+            metadata,
+        } = update;
+
+        let config = Cw1155Config::<
+            TMetadataExtension,
+            TCustomResponseMessage,
+            TMetadataExtensionMsg,
+            TQueryExtensionMsg,
+        >::default();
+        let token_info = config.tokens.load(deps.storage, &token_id)?;
+
+        config.update_token_metadata(
+            deps.storage,
+            &token_id,
+            token_info.clone(),
+            token_uri,
+            metadata.clone(),
+        )?;
+
+        Ok(Response::new().add_attributes(UpdateMetadataEvent::new(
+            &token_id,
+            token_info.token_uri.clone(),
+            metadata.is_some(),
+        )))
+    }
+
+    /// Allows creator to update onchain metadata and token uri in batches.
+    /// From `update_uri` on ERC-1155.
+    fn update_metadata_batch(
+        &self,
+        env: ExecuteEnv,
+        updates: Vec<TokenUpdate<TMetadataExtension>>,
+    ) -> Result<Response<TCustomResponseMessage>, Cw1155ContractError> {
+        let ExecuteEnv { deps, info, .. } = env;
+        cw_ownable::assert_owner(deps.storage, &info.sender)?;
+
+        if updates.is_empty() {
+            return Err(Cw1155ContractError::EmptyUpdateRequest {});
         }
 
         let config = Cw1155Config::<
@@ -844,27 +914,54 @@ pub trait Cw1155Execute<
             TMetadataExtensionMsg,
             TQueryExtensionMsg,
         >::default();
-        let mut token_info = config.tokens.load(deps.storage, &token_id)?;
 
-        // update extension
-        let extension_update = if let Some(extension) = extension {
-            token_info.extension = extension;
-            true
-        } else {
-            false
-        };
+        let events = updates
+            .into_iter()
+            .map(
+                |TokenUpdate {
+                     token_id,
+                     token_uri,
+                     metadata,
+                 }| {
+                    let token_info = config.tokens.load(deps.storage, &token_id)?;
+                    let (token_id, token_info) = config.update_token_metadata(
+                        deps.storage,
+                        &token_id,
+                        token_info,
+                        token_uri,
+                        metadata.clone(),
+                    )?;
+                    Ok(UpdateMetadataEvent::new(
+                        &token_id,
+                        token_info.token_uri,
+                        metadata.is_some(),
+                    ))
+                },
+            )
+            .collect::<Result<Vec<_>, Cw1155ContractError>>()?;
 
-        // update token uri
-        token_info.token_uri = token_uri;
+        Ok(Response::new().add_attributes(UpdateMetadataBatchEvent::new(events)))
+    }
 
-        // store token
-        config.tokens.save(deps.storage, &token_id, &token_info)?;
+    /// Allows owner to update the default base uri.
+    /// From `update_uri` on ERC-1155.
+    fn update_default_base_uri(
+        &self,
+        env: ExecuteEnv,
+        uri: Option<String>,
+    ) -> Result<Response<TCustomResponseMessage>, Cw1155ContractError> {
+        let ExecuteEnv { deps, info, .. } = env;
+        cw_ownable::assert_owner(deps.storage, &info.sender)?;
 
-        Ok(Response::new().add_attributes(UpdateMetadataEvent::new(
-            &token_id,
-            &token_info.token_uri.unwrap_or_default(),
-            extension_update,
-        )))
+        let config = Cw1155Config::<
+            TMetadataExtension,
+            TCustomResponseMessage,
+            TMetadataExtensionMsg,
+            TQueryExtensionMsg,
+        >::default();
+        config.default_base_uri.save(deps.storage, &uri)?;
+
+        Ok(Response::new().add_attributes(UpdateDefaultUriEvent { default_uri: uri }))
     }
 }
 
